@@ -3,9 +3,16 @@
 import curses
 import random
 import numpy as np
+import sys
+sys.path.append('.')
+
+import six
+
 from enum import IntEnum, unique
 
-from pycolab import ascii_art, human_ui, things
+from pycolab import human_ui, engine, things
+
+from dial_control_rl import ascii_art
 
 BACKGROUND = [
     ' M  W ',
@@ -165,14 +172,6 @@ class Player(things.Sprite):
                         f'slot {slot}.')
                     the_plot[('inv', self._player, slot)] = thing.character
                     found_thing = True
-                if thing.character in DROPPED_ITEMS:
-                    drop_slot = all_things[thing.character]
-                    item = drop_slot.item
-                    if item is not None:
-                        log(f'Player #{self._player} picking up dropped '
-                            f'{item!r} to slot {slot}.')
-                        found_thing = True
-                        the_plot[('inv', self._player, slot)] = item
                 item = the_plot.get(('inv', self._player, slot), None)
                 if thing.character == CRUCIBLE:
                     if item is not None:
@@ -189,17 +188,25 @@ class Player(things.Sprite):
                         make_bench_jewelry(self._player, the_plot, item)
                     else:
                         log(f'Player #{self._player} has no item in {slot}')
+                if not found_thing and thing.character in DROPPED_ITEMS:
+                    drop_slot = all_things[thing.character]
+                    picked_up_item = drop_slot.item
+                    if picked_up_item is not None:
+                        # Don't set found_thing, so that we will also drop, below.
+                        log(f'Player #{self._player} picking up dropped '
+                            f'{picked_up_item!r} to slot {slot}.')
+                        the_plot[('inv', self._player, slot)] = picked_up_item
+                        drop_slot.unfill()
                 if not found_thing:
-                    item = the_plot.get(('inv', self._player, slot), None)
-                    log(f'item = {item}')
                     if item is not None:
-                        log(f'dropping!')
+                        found_thing = True
                         next_drop_index = the_plot.get('drop_item_index', 0)
                         the_plot['drop_item_index'] = ((next_drop_index + 1) %
                                                        len(DROPPED_ITEMS))
                         drop_char = DROPPED_ITEMS[next_drop_index]
                         drop_slot = all_things[drop_char]
                         drop_slot.fill(self.position, item)
+                        the_plot['remap'][drop_char] = item
                         log(f'Player #{self._player} dropped {item!r} at '
                             f'{drop_slot.position}')
 
@@ -288,7 +295,6 @@ class DropSlot(things.Sprite):
 
     def __init__(self, corner, position, character):
         super(DropSlot, self).__init__(corner, position, character)
-        print('Constructing DropSlot')
         self._visible = False
         self.item = None
 
@@ -300,6 +306,41 @@ class DropSlot(things.Sprite):
         self._visible = True
         self._position = self.Position(x, y)
         self.item = item
+
+    def unfill(self):
+        self._visible = False
+
+
+class Engine(engine.Engine):
+
+    def __init__(self, *args, **kwargs):
+        self.remapping = {}
+        super(Engine, self).__init__(*args, **kwargs)
+
+    def _render(self):
+        # Copied from pycolab, since we want to re-implement it with
+        # character-remapping.
+        """Render a new game board.
+        Computes a new rendering of the game board, and assigns it to `self._board`,
+        based on the current contents of the `Backdrop` and all `Sprite`s and
+        `Drape`s. Uses properties of those objects to obtain those contents; no
+        computation should be done on their part.
+        Each object is "painted" on the board in a prescribed order: the `Backdrop`
+        first, then the `Sprite`s and `Drape`s according to the z-order (the order
+        in which they appear in `self._sprites_and_drapes`
+        """
+        self._renderer.clear()
+        self._renderer.paint_all_of(self._backdrop.curtain)
+        for character, entity in six.iteritems(self._sprites_and_drapes):
+            c = self.remapping.get(character, character)
+            # By now we should have checked fairly carefully that all entities in
+            # _sprites_and_drapes are Sprites or Drapes.
+            if isinstance(entity, things.Sprite) and entity.visible:
+                self._renderer.paint_sprite(c, entity.position)
+            elif isinstance(entity, things.Drape):
+                self._renderer.paint_drape(c, entity.curtain)
+        # Done with all the layers; render the board!
+        self._board = self._renderer.render()
 
 
 def gen_start():
@@ -341,7 +382,9 @@ def make_game():
             '5': DropSlot,
             '4': DropSlot,
             },
-        z_order='CBRGADSJOP98765412')
+        z_order='CBRGADSJOP98765412',
+        game_class=Engine)
+    engine.the_plot['remap'] = engine.remapping
     for player in (1, 2):
         player_goal = np.zeros(GOAL_LEN)
         player_goal_index = random.randint(0, MAX_JEWELRY_IDX)
