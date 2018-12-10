@@ -18,10 +18,12 @@ BACKGROUND = [
     ' M  W ',
     ' M  W ',
     ' M  W ',
-    ' MBCW ']
+    ' MBCW ',
+    '      ']
 
 MAP_WIDTH = len(BACKGROUND[0])
-MAP_HEIGHT = len(BACKGROUND)
+# Bottom row is used for drawing inventory.
+MAP_HEIGHT = len(BACKGROUND) - 1
 
 MOUNTAIN = 'M'
 WATER = 'W'
@@ -339,6 +341,12 @@ class Engine(engine.Engine):
                 self._renderer.paint_sprite(c, entity.position)
             elif isinstance(entity, things.Drape):
                 self._renderer.paint_drape(c, entity.curtain)
+        for player in (1, 2):
+            for inv_slot in (0, 1, 2):
+                col = 3 * (player - 1) + inv_slot
+                pos = things.Sprite.Position(MAP_HEIGHT, col)
+                c = self.the_plot.get(('inv', player, inv_slot), ' ')
+                self._renderer.paint_sprite(c, pos)
         # Done with all the layers; render the board!
         self._board = self._renderer.render()
 
@@ -406,23 +414,25 @@ def main():
 
     ui = human_ui.CursesUi(
         keys_to_actions={
-            ' ': Action.SKIP,
-            curses.KEY_UP: Action.UP,
-            curses.KEY_DOWN: Action.DOWN,
-            curses.KEY_LEFT: Action.LEFT,
-            curses.KEY_RIGHT: Action.RIGHT,
-            ',': Action.ITEM1,
-            '.': Action.ITEM2,
-            '/': Action.ITEM3,
 
-            'e': P2_OFF + Action.SKIP,
-            'w': P2_OFF + Action.UP,
-            's': P2_OFF + Action.DOWN,
-            'a': P2_OFF + Action.LEFT,
-            'd': P2_OFF + Action.RIGHT,
-            '1': P2_OFF + Action.ITEM1,
-            '2': P2_OFF + Action.ITEM2,
-            '3': P2_OFF + Action.ITEM3,
+            ' ': Action.SKIP,
+            'w': Action.UP,
+            's': Action.DOWN,
+            'a': Action.LEFT,
+            'd': Action.RIGHT,
+            '1': Action.ITEM1,
+            '2': Action.ITEM2,
+            '3': Action.ITEM3,
+
+
+            'n': P2_OFF + Action.ITEM1,
+            curses.KEY_UP: P2_OFF + Action.UP,
+            curses.KEY_DOWN: P2_OFF + Action.DOWN,
+            curses.KEY_LEFT: P2_OFF + Action.LEFT,
+            curses.KEY_RIGHT: P2_OFF + Action.RIGHT,
+            ',': P2_OFF + Action.ITEM1,
+            '.': P2_OFF + Action.ITEM2,
+            '/': P2_OFF + Action.ITEM3,
 
             'q': Action.QUIT,
             curses.KEY_EXIT: Action.QUIT,
