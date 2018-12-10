@@ -33,6 +33,7 @@ PEARL = 'P'
 GEMS = [RUBY, AMETHYST, DIAMOND, JADE, PEARL]
 METALS = [SILVER, GOLD]
 ITEMS = GEMS + METALS + [COAL]
+DROPPED_ITEMS = ['9', '8', '7', '6', '5', '4']
 
 
 @unique
@@ -111,6 +112,7 @@ class Action(IntEnum):
 P2_OFF = Action.ITEM3 + 1
 CRUCIBLE_ITEMS = ('crucible_items',)
 BENCH_ITEMS = ('bench_items',)
+JEWELRY_CONSTRUCTED = ('jewelry_constructed',)
 
 
 def move(x, y, direction):
@@ -157,26 +159,49 @@ class Player(things.Sprite):
         slot = action - Action.ITEM1
         found_thing = False
         for c, thing in all_things.items():
-            if thing.position == self.position:
+            if thing.position == self.position and thing.visible:
                 if c in ITEMS:
-                    log(f'Player #{self._player} picked up {c!r} to {slot}.')
+                    log(f'Player #{self._player} picked up {c!r} to '
+                        f'slot {slot}.')
                     the_plot[('inv', self._player, slot)] = thing.character
                     found_thing = True
+                if thing.character in DROPPED_ITEMS:
+                    drop_slot = all_things[thing.character]
+                    item = drop_slot.item
+                    if item is not None:
+                        log(f'Player #{self._player} picking up dropped '
+                            f'{item!r} to slot {slot}.')
+                        found_thing = True
+                        the_plot[('inv', self._player, slot)] = item
                 item = the_plot.get(('inv', self._player, slot), None)
-                if item is not None:
-                    found_thing = True
-                    if thing.character == CRUCIBLE:
+                if thing.character == CRUCIBLE:
+                    if item is not None:
+                        found_thing = True
                         log(f'Player #{self._player} put {item!r} in '
                             'crucible.')
                         make_crucible_jewelry(self._player, the_plot, item)
-                    if thing.character == BENCH:
+                    else:
+                        log(f'Player #{self._player} has no item in {slot}')
+                if thing.character == BENCH:
+                    if item is not None:
+                        found_thing = True
                         log(f'Player #{self._player} put {item!r} in bench.')
                         make_bench_jewelry(self._player, the_plot, item)
-                else:
-                    log(f'Player #{self._player} has not item in slot {slot}')
+                    else:
+                        log(f'Player #{self._player} has no item in {slot}')
                 if not found_thing:
-                    # TODO: Handle dropping items.
-                    pass
+                    item = the_plot.get(('inv', self._player, slot), None)
+                    log(f'item = {item}')
+                    if item is not None:
+                        log(f'dropping!')
+                        next_drop_index = the_plot.get('drop_item_index', 0)
+                        the_plot['drop_item_index'] = ((next_drop_index + 1) %
+                                                       len(DROPPED_ITEMS))
+                        drop_char = DROPPED_ITEMS[next_drop_index]
+                        drop_slot = all_things[drop_char]
+                        drop_slot.fill(self.position, item)
+                        log(f'Player #{self._player} dropped {item!r} at '
+                            f'{drop_slot.position}')
 
 
 def make_crucible_jewelry(player, the_plot, item):
@@ -232,6 +257,7 @@ def gem_index(g):
 
 
 def give_reward(player, the_plot, jewelry_idx):
+    the_plot.setdefault(JEWELRY_CONSTRUCTED, {}).add(jewelry_idx)
     for p in (1, 2):
         player_goal = the_plot[('goal', p)]
         reward = player_goal[jewelry_idx] * GOAL_REWARD
@@ -244,6 +270,10 @@ def give_reward(player, the_plot, jewelry_idx):
 
 class Item(things.Sprite):
 
+    def __init__(self, corner, position, character):
+        super(Item, self).__init__(corner, position, character)
+        self._visible = True
+
     def update(self, actions, board, layers, backdrop, all_things, the_plot):
         pass
 
@@ -252,6 +282,24 @@ class Place(things.Sprite):
 
     def update(self, actions, board, layers, backdrop, all_things, the_plot):
         pass
+
+
+class DropSlot(things.Sprite):
+
+    def __init__(self, corner, position, character):
+        super(DropSlot, self).__init__(corner, position, character)
+        print('Constructing DropSlot')
+        self._visible = False
+        self.item = None
+
+    def update(self, actions, board, layers, backdrop, all_things, the_plot):
+        pass
+
+    def fill(self, position, item):
+        x, y = position
+        self._visible = True
+        self._position = self.Position(x, y)
+        self.item = item
 
 
 def gen_start():
@@ -285,8 +333,15 @@ def make_game():
             PEARL: Item,
             CRUCIBLE: Place,
             BENCH: Place,
+
+            '9': DropSlot,
+            '8': DropSlot,
+            '7': DropSlot,
+            '6': DropSlot,
+            '5': DropSlot,
+            '4': DropSlot,
             },
-        z_order='CBRGADSJOP12')
+        z_order='CBRGADSJOP98765412')
     for player in (1, 2):
         player_goal = np.zeros(GOAL_LEN)
         player_goal_index = random.randint(0, MAX_JEWELRY_IDX)
@@ -294,6 +349,7 @@ def make_game():
             f'{JEWELRY_NAMES[player_goal_index]}.')
         player_goal[player_goal_index] = 1.0
         engine.the_plot[('goal', player)] = player_goal
+
     return engine
 
 
