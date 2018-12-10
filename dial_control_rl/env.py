@@ -2,7 +2,8 @@
 
 import curses
 import random
-from enum import IntEnum
+import numpy as np
+from enum import IntEnum, unique
 
 from pycolab import ascii_art, human_ui, things
 
@@ -29,7 +30,17 @@ JADE = 'J'
 COAL = 'O'
 PEARL = 'P'
 
-ITEMS = [RUBY, GOLD, AMETHYST, DIAMOND, SILVER, JADE, COAL, PEARL]
+GEMS = [RUBY, AMETHYST, DIAMOND, JADE, PEARL]
+METALS = [SILVER, GOLD]
+ITEMS = GEMS + METALS + [COAL]
+
+
+@unique
+class JewelryShape(IntEnum):
+    CROWN = 0
+    RING = 1
+    BRACELET = 2
+
 
 PLAYER_1 = '1'
 PLAYER_2 = '2'
@@ -50,6 +61,27 @@ COLOURS = {' ': (128, 255, 0),  # Should look like grass.
 
 
 PLAYING = False
+
+JEWELRY_NAMES = [f'{metal.capitalize()} {shape.capitalize()} with {gem}'
+                 for shape in [shape.name.capitalize()
+                               for shape in JewelryShape]
+                 for metal in ['Silver', 'Gold']
+                 for gem in ['Ruby', 'Amethyst', 'Diamond', 'Jade', 'Pearl']]
+
+
+def jewelry_index(shape, metal, gem):
+    return (gem +
+            len(GEMS) * metal +
+            len(GEMS) * len(METALS) * shape)
+
+
+MAX_JEWELRY_IDX = jewelry_index(JewelryShape.BRACELET, len(METALS) - 1,
+                                len(GEMS) - 1)
+
+
+GOAL_LEN = (MAX_JEWELRY_IDX + 1) + len(ITEMS)
+assert GOAL_LEN == 38
+GOAL_REWARD = 100
 
 
 def clear_log():
@@ -77,6 +109,8 @@ class Action(IntEnum):
 
 
 P2_OFF = Action.ITEM3 + 1
+CRUCIBLE_ITEMS = ('crucible_items',)
+BENCH_ITEMS = ('bench_items',)
 
 
 def move(x, y, direction):
@@ -105,7 +139,8 @@ class Player(things.Sprite):
         action = actions % P2_OFF
         if player != self._player:
             return
-        the_plot.add_reward(-1)
+        if not the_plot.get(('goal_complete', player), False):
+            the_plot.add_reward(-1)
         if action != Action.SKIP:
             the_plot.add_reward(-1)
         if Action.UP <= action <= Action.RIGHT:
@@ -131,29 +166,89 @@ class Player(things.Sprite):
                 if item is not None:
                     found_thing = True
                     if thing.character == CRUCIBLE:
-                        log(f'Player #{self._player} put {c!r} in crucible.')
-                        items = the_plot.setdefault('crucible_items', [])
-                        items.append(item)
-                        make_crucible_jewelry(self._player, items, the_plot)
+                        log(f'Player #{self._player} put {item!r} in '
+                            'crucible.')
+                        make_crucible_jewelry(self._player, the_plot, item)
                     if thing.character == BENCH:
-                        log(f'Player #{self._player} put {c!r} in bench.')
-                        items = the_plot.setdefault('bench_items', [])
-                        items.append(item)
-                        make_bench_jewelry(self._player, items, the_plot)
+                        log(f'Player #{self._player} put {item!r} in bench.')
+                        make_bench_jewelry(self._player, the_plot, item)
+                else:
+                    log(f'Player #{self._player} has not item in slot {slot}')
                 if not found_thing:
                     # TODO: Handle dropping items.
                     pass
 
 
-def make_crucible_jewelry(player, items, the_plot):
-    raise Exception(items)
+def make_crucible_jewelry(player, the_plot, item):
+    items = the_plot.setdefault(CRUCIBLE_ITEMS, [])
+    new_items = items + [item]
+    if len(new_items) == 3:
+        if COAL in new_items:
+            make_from(player, the_plot, JewelryShape.CROWN,
+                      new_items)
+        new_items = new_items[-2:]
+    elif len(new_items) == 2:
+        make_from(player, the_plot, JewelryShape.RING,
+                  new_items)
+    the_plot[CRUCIBLE_ITEMS] = new_items
 
 
-def make_bench_jewelry(player, items, the_plot):
-    raise Exception(items)
+def make_bench_jewelry(player, the_plot, item):
+    items = the_plot.setdefault(BENCH_ITEMS, [])
+    new_items = items + [item]
+    if len(new_items) > 2:
+        new_items = new_items[-2:]
+    the_plot[BENCH_ITEMS] = new_items
+    if len(new_items) == 2:
+        make_from(player, the_plot, JewelryShape.BRACELET,
+                  new_items)
+
+
+def make_from(player, the_plot, shape, items):
+    metals = get_metals(items)
+    gems = get_gems(items)
+    if len(metals) == 1 and len(gems) == 1:
+        give_reward(player, the_plot, jewelry_index(shape,
+                                                    metal_index(metals[0]),
+                                                    gem_index(gems[0])))
+    else:
+        log(f'Cannot make {shape.name.lower()} from {items!r}.')
+
+
+def get_metals(items):
+    return [item for item in items if item in METALS]
+
+
+def get_gems(items):
+    return [item for item in items if item in GEMS]
+
+
+def metal_index(m):
+    return METALS.index(m)
+
+
+def gem_index(g):
+    return GEMS.index(g)
+
+
+def give_reward(player, the_plot, jewelry_idx):
+    for p in (1, 2):
+        player_goal = the_plot[('goal', p)]
+        reward = player_goal[jewelry_idx] * GOAL_REWARD
+        log(f'Giving reward {reward} to Player {p} for '
+            f'{JEWELRY_NAMES[jewelry_idx]}.')
+        the_plot.add_reward(reward)
+        if reward > 0:
+            the_plot[('goal_complete', p)] = True
 
 
 class Item(things.Sprite):
+
+    def update(self, actions, board, layers, backdrop, all_things, the_plot):
+        pass
+
+
+class Place(things.Sprite):
 
     def update(self, actions, board, layers, backdrop, all_things, the_plot):
         pass
@@ -174,12 +269,12 @@ def gen_start():
 
 
 def make_game():
-    return ascii_art.ascii_art_to_game(
+    engine = ascii_art.ascii_art_to_game(
         gen_start(),
         what_lies_beneath=' ',
         sprites={
-            '1': ascii_art.Partial(Player),
-            '2': ascii_art.Partial(Player),
+            '1': Player,
+            '2': Player,
             RUBY: Item,
             GOLD: Item,
             AMETHYST: Item,
@@ -188,8 +283,18 @@ def make_game():
             JADE: Item,
             COAL: Item,
             PEARL: Item,
+            CRUCIBLE: Place,
+            BENCH: Place,
             },
-        z_order='RGADSJOP12')
+        z_order='CBRGADSJOP12')
+    for player in (1, 2):
+        player_goal = np.zeros(GOAL_LEN)
+        player_goal_index = random.randint(0, MAX_JEWELRY_IDX)
+        log(f'Giving Player {player} the goal of '
+            f'{JEWELRY_NAMES[player_goal_index]}.')
+        player_goal[player_goal_index] = 1.0
+        engine.the_plot[('goal', player)] = player_goal
+    return engine
 
 
 def main():
