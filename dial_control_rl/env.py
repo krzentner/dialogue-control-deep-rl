@@ -20,21 +20,31 @@ class CraftingEnv(Env):
 
         self._step_player()
 
-        observations = game.observations_for_player(obs, self.current_player)
-        return {
-            'observations': observations,
-            'reward': reward,
-            'done': self.game.game_over,
-            'info': {
+        obs = game.observations_for_player(obs, self.current_player)
+        obs = self.actual_observation_space.flatten(obs)
+        return (obs, reward, self.game.game_over, {
                 'goals': self.game.goals(),
                 'player': player,
-            }
-        }
+                })
 
     def seed(self, seed):
+        self.last_seed = seed
         self.current_player = 1
         self.random_state = np.random.RandomState(seed)
         self.game = game.make_game(seed)
+        self.game.its_showtime()
+        self.actual_observation_space = Tuple((
+            Box(0, 255, dtype=np.uint8,
+                shape=(game.MAP_HEIGHT, game.MAP_WIDTH)),
+            Box(0, 255, dtype=np.uint8,
+                shape=(3,)),
+            Box(0, 255, dtype=np.uint8,
+                shape=(3,)),
+            Box(0, 1, dtype=np.uint8,
+                shape=(game.MAP_HEIGHT, game.MAP_WIDTH)),
+            Box(0, 1, dtype=np.uint8,
+                shape=(game.MAP_HEIGHT, game.MAP_WIDTH)),
+            Box(0, 1, dtype=np.uint8, shape=(game.GOAL_LEN,))))
 
     def render(self, mode='human'):
         if mode == 'human':
@@ -47,18 +57,8 @@ class CraftingEnv(Env):
 
     @property
     def observation_space(self):
-        return Tuple((
-                Box(0, 255, dtype=np.uint8,
-                    shape=(self.game.cols * self.game.rows,)),
-                Box(0, 255, dtype=np.uint8,
-                    shape=(3,)),
-                Box(0, 255, dtype=np.uint8,
-                    shape=(3,)),
-                Box(0, 1, dtype=np.uint8,
-                    shape=(self.game.cols * self.game.rows,)),
-                Box(0, 1, dtype=np.uint8,
-                    shape=(self.game.cols * self.game.rows,)),
-                Box(0, 1, dtype=np.uint8, shape=(game.GOAL_LEN,))))
+        flat_dim = self.actual_observation_space.flat_dim
+        return Box(0, 255, dtype=np.uint8, shape=(flat_dim,))
 
     @property
     def action_space(self):
@@ -90,4 +90,9 @@ class CraftingEnv(Env):
         return None
 
     def reset(self):
-        pass
+        self.seed(self.last_seed)
+        obs = self.game.render_observation()
+        obs = game.observations_for_player(obs, self.current_player)
+        obs = self.actual_observation_space.flatten(obs)
+        assert obs.shape == self.observation_space.shape
+        return obs

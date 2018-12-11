@@ -268,7 +268,7 @@ def gem_index(g):
 
 
 def give_reward(player, the_plot, jewelry_idx):
-    the_plot.setdefault(JEWELRY_CONSTRUCTED, {}).add(jewelry_idx)
+    the_plot[JEWELRY_CONSTRUCTED].add(jewelry_idx)
     for p in (1, 2):
         player_goal = the_plot[('goal', p)]
         reward = player_goal[jewelry_idx] * GOAL_REWARD
@@ -362,7 +362,7 @@ class Engine(engine.Engine):
     def render_completed(self):
         completed = self.the_plot[JEWELRY_CONSTRUCTED]
         return np.array([1 if jewelry in completed else 0
-                         for jewelry in range(JEWELRY_LEN)],
+                         for jewelry in range(GOAL_LEN)],
                         dtype=np.uint8)
 
     def render_observation(self):
@@ -372,8 +372,8 @@ class Engine(engine.Engine):
             c = self.remapping.get(c, c)
             mask = obs.layers[c][:-1]
             grid[(grid == 0) & mask] = ord(c)
-        player1_grid = np.array(obs.layers['1'], dtype=np.uint8)
-        player2_grid = np.array(obs.layers['2'], dtype=np.uint8)
+        player1_grid = np.array(obs.layers['1'][:-1], dtype=np.uint8)
+        player2_grid = np.array(obs.layers['2'][:-1], dtype=np.uint8)
         inv1 = np.array([ord(self.the_plot.get(('inv', 1, i), ' '))
                          for i in range(INV_SIZE)])
         inv2 = np.array([ord(self.the_plot.get(('inv', 2, i), ' '))
@@ -382,7 +382,7 @@ class Engine(engine.Engine):
         return (grid, inv1, inv2, player1_grid, player2_grid, completed)
 
     def goals(self):
-        return self.the_plot[('goal', 1)], engine.the_plot[('goal', 2)]
+        return self.the_plot[('goal', 1)], self.the_plot[('goal', 2)]
 
 
 def observations_for_player(obs, player):
@@ -436,6 +436,7 @@ def make_game(seed=None):
         z_order='CBRGADSJOP98765412',
         game_class=Engine)
     engine.the_plot['remap'] = engine.remapping
+    engine.the_plot[JEWELRY_CONSTRUCTED] = set()
     for player in (1, 2):
         player_goal = np.zeros(GOAL_LEN)
         player_goal_index = random_state.randint(0, JEWELRY_LEN - 1)
