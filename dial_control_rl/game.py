@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import curses
-import random
 import numpy as np
 import sys
 sys.path.append('.')
@@ -43,6 +42,7 @@ GEMS = [RUBY, AMETHYST, DIAMOND, JADE, PEARL]
 METALS = [SILVER, GOLD]
 ITEMS = GEMS + METALS + [COAL]
 DROPPED_ITEMS = ['9', '8', '7', '6', '5', '4']
+INV_SIZE = 3
 
 
 @unique
@@ -66,6 +66,8 @@ COLOURS = {' ': (128, 255, 0),  # Should look like grass.
            DIAMOND: (250, 250, 250),
            SILVER: (200, 200, 250),
            JADE: (0, 200, 100),
+           PEARL: (230, 255, 255),
+           COAL: (22, 22, 22),
            PLAYER_1: (200, 150, 150),
            PLAYER_2: (0, 50, 30)}
 
@@ -85,11 +87,11 @@ def jewelry_index(shape, metal, gem):
             len(GEMS) * len(METALS) * shape)
 
 
-MAX_JEWELRY_IDX = jewelry_index(JewelryShape.BRACELET, len(METALS) - 1,
-                                len(GEMS) - 1)
+JEWELRY_LEN = jewelry_index(JewelryShape.BRACELET, len(METALS) - 1,
+                            len(GEMS) - 1) + 1
 
 
-GOAL_LEN = (MAX_JEWELRY_IDX + 1) + len(ITEMS)
+GOAL_LEN = (JEWELRY_LEN) + len(ITEMS)
 assert GOAL_LEN == 38
 GOAL_REWARD = 100
 
@@ -322,41 +324,81 @@ class Engine(engine.Engine):
     def _render(self):
         # Copied from pycolab, since we want to re-implement it with
         # character-remapping.
-        """Render a new game board.
-        Computes a new rendering of the game board, and assigns it to `self._board`,
-        based on the current contents of the `Backdrop` and all `Sprite`s and
-        `Drape`s. Uses properties of those objects to obtain those contents; no
-        computation should be done on their part.
-        Each object is "painted" on the board in a prescribed order: the `Backdrop`
-        first, then the `Sprite`s and `Drape`s according to the z-order (the order
-        in which they appear in `self._sprites_and_drapes`
-        """
+        """Render a new game board.  Computes a new rendering of the game
+        board, and assigns it to `self._board`, based on the current contents
+        of the `Backdrop` and all `Sprite`s and `Drape`s. Uses properties of
+        those objects to obtain those contents; no computation should be done
+        on their part.  Each object is "painted" on the board in a prescribed
+        order: the `Backdrop` first, then the `Sprite`s and `Drape`s according
+        to the z-order (the order in which they appear in
+        `self._sprites_and_drapes` """
         self._renderer.clear()
         self._renderer.paint_all_of(self._backdrop.curtain)
         for character, entity in six.iteritems(self._sprites_and_drapes):
             c = self.remapping.get(character, character)
-            # By now we should have checked fairly carefully that all entities in
-            # _sprites_and_drapes are Sprites or Drapes.
+            # By now we should have checked fairly carefully that all entities
+            # in _sprites_and_drapes are Sprites or Drapes.
             if isinstance(entity, things.Sprite) and entity.visible:
                 self._renderer.paint_sprite(c, entity.position)
             elif isinstance(entity, things.Drape):
                 self._renderer.paint_drape(c, entity.curtain)
         for player in (1, 2):
             for inv_slot in (0, 1, 2):
-                col = 3 * (player - 1) + inv_slot
+                col = INV_SIZE * (player - 1) + inv_slot
                 pos = things.Sprite.Position(MAP_HEIGHT, col)
                 c = self.the_plot.get(('inv', player, inv_slot), ' ')
                 self._renderer.paint_sprite(c, pos)
         # Done with all the layers; render the board!
         self._board = self._renderer.render()
 
+    def render_human(self):
+        return '\n'.join(''.join(chr(c) for c in line)
+                         for line in self._board.board)
 
-def gen_start():
+    def render_array(self):
+        return np.array([[COLOURS[chr(c)] for c in line]
+                         for line in self._board.board])
+
+    def render_completed(self):
+        completed = self.the_plot[JEWELRY_CONSTRUCTED]
+        return np.array([1 if jewelry in completed else 0
+                         for jewelry in range(JEWELRY_LEN)],
+                        dtype=np.uint8)
+
+    def render_observation(self):
+        obs = self._board
+        grid = np.zeros((MAP_HEIGHT, MAP_WIDTH), dtype=np.uint8)
+        for c in 'CBRGADSJOP987654':
+            c = self.remapping.get(c, c)
+            mask = obs.layers[c][:-1]
+            grid[(grid == 0) & mask] = ord(c)
+        player1_grid = np.array(obs.layers['1'], dtype=np.uint8)
+        player2_grid = np.array(obs.layers['2'], dtype=np.uint8)
+        inv1 = np.array([ord(self.the_plot.get(('inv', 1, i), ' '))
+                         for i in range(INV_SIZE)])
+        inv2 = np.array([ord(self.the_plot.get(('inv', 2, i), ' '))
+                         for i in range(INV_SIZE)])
+        completed = self.render_completed()
+        return (grid, inv1, inv2, player1_grid, player2_grid, completed)
+
+    def goals(self):
+        return self.the_plot[('goal', 1)], engine.the_plot[('goal', 2)]
+
+
+def observations_for_player(obs, player):
+    if player == 1:
+        return obs
+    else:
+        grid, inv1, inv2, player1, player2, completed = obs
+        return (grid, inv2, inv1, player2, player1, completed)
+
+
+def gen_start(random_state):
     items_copy = list(ITEMS)
     background_copy = [list(row) for row in BACKGROUND]
     background_copy[0][2] = '1'
     background_copy[0][3] = '2'
-    random.shuffle(items_copy)
+    random_state.shuffle(items_copy)
     for index, item in enumerate(items_copy):
         if index < 4:
             background_copy[index][0] = item
@@ -365,9 +407,10 @@ def gen_start():
     return [''.join(row) for row in background_copy]
 
 
-def make_game():
+def make_game(seed=None):
+    random_state = np.random.RandomState(seed)
     engine = ascii_art.ascii_art_to_game(
-        gen_start(),
+        gen_start(random_state),
         what_lies_beneath=' ',
         sprites={
             '1': Player,
@@ -395,13 +438,20 @@ def make_game():
     engine.the_plot['remap'] = engine.remapping
     for player in (1, 2):
         player_goal = np.zeros(GOAL_LEN)
-        player_goal_index = random.randint(0, MAX_JEWELRY_IDX)
+        player_goal_index = random_state.randint(0, JEWELRY_LEN - 1)
         log(f'Giving Player {player} the goal of '
             f'{JEWELRY_NAMES[player_goal_index]}.')
         player_goal[player_goal_index] = 1.0
         engine.the_plot[('goal', player)] = player_goal
 
     return engine
+
+
+def action_for_player(action, player):
+    if player == 2:
+        return P2_OFF + action
+    else:
+        return action
 
 
 def main():
