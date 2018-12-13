@@ -169,10 +169,9 @@ def example_inference_loop():
             else:
                 act, abbrevs = i.split(',')
             action = forward_act_map[act]
-            print('Inference state before:', inference.state[0])
             back_act, goal = inference.forward_act(action, abbrevs,
                                                    len(abbrevs) * [1.0])
-            print('Inference state after:', inference.state[0])
+            print(inference.state[0].name, ': ', sep='', end='')
             if back_act == BackChannelAct.NO_PROGRESS:
                 print('Of course.')
             elif back_act == BackChannelAct.PROGRESS:
