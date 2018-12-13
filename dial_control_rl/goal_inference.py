@@ -141,6 +141,7 @@ class GoalInference:
         if state == InferenceState.UNCONFIRMED:
             return BackChannelAct.REQUEST_CONFIRMATION, goal
         elif state == InferenceState.CONFUSED:
+            self.full_reset()
             return BackChannelAct.RESET, None
         else:
             return BackChannelAct.PROGRESS, None
