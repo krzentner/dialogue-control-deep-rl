@@ -53,7 +53,19 @@ class ExperimentMaster(BaseExperimentMaster):
         configurator.fixed('cuda', False)
 
         configurator.fixed('algo.lr', 7e-4)
+        configurator.fixed('algo.lr_V', 1e-3)
+        configurator.fixed('algo.gamma', 0.99)
+        configurator.fixed('algo.gae_lambda', 0.97)
         configurator.fixed('env.count', 20)
+        configurator.fixed('agent.count', 20)
+
+        configurator.fixed('agent.standardize_Q', False)
+        configurator.fixed('agent.standardize_adv', False)
+        configurator.fixed('agent.max_grad_norm', 0.5)
+        configurator.fixed('agent.entropy_coef', 0.01)
+        configurator.fixed('agent.value_coef', 0.5)
+        configurator.fixed('agent.fit_terminal_value', False)
+        configurator.fixed('agent.terminal_value_coef', 0.1)
 
         configurator.fixed('train.iter', 10000)
         configurator.fixed('log.interval', 1000)
