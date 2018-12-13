@@ -3,6 +3,7 @@
 import sys
 sys.path.append('.')
 
+import numpy as np
 from lagom.experiment import Configurator
 from lagom.experiment import BaseExperimentWorker
 from lagom.experiment import BaseExperimentMaster
@@ -12,7 +13,9 @@ from lagom.envs import make_vec_env
 from lagom.utils import Seeder
 from lagom.envs.vec_env import SerialVecEnv, VecStandardize
 from lagom.runner import RollingSegmentRunner
+from lagom.utils import pickle_dump
 from functools import partial
+from pathlib import Path
 
 from dial_control_rl.env import CraftingEnv
 from dial_control_rl.engine import Engine
@@ -25,6 +28,7 @@ class ExperimentWorker(BaseExperimentWorker):
 
     def make_algo(self):
         def algorithm(config, seed, device):
+            logdir = Path(config['log.dir']) / str(config['ID']) / str(seed)
             seeder = Seeder(seed)
             seeds = seeder(size=config['env.count'])
             env_constructors = []
@@ -40,8 +44,13 @@ class ExperimentWorker(BaseExperimentWorker):
 
             for i in range(config['train.iter']):
                 training_result = engine.train(i)
+                print(f'Training iteration {i} complete.')
                 if i % config['log.interval'] == 0:
-                    engine.log_train(training_result)
+                    logs = engine.log_train(training_result)
+                    pickle_dump(obj=logs, f=logdir / f'iter_{i}_train_logs', ext='.pkl')
+                    np.save(logdir / 'trained_params',
+                            engine.agent.policy.state_dict())
+
 
         return algorithm
 
@@ -68,8 +77,8 @@ class ExperimentMaster(BaseExperimentMaster):
         configurator.fixed('agent.terminal_value_coef', 0.1)
 
         configurator.fixed('train.iter', 10000)
-        configurator.fixed('log.interval', 1000)
-        configurator.fixed('log.dir', 'logs')
+        configurator.fixed('log.interval', 10)
+        configurator.fixed('log.dir', 'logs-2')
 
         return configurator.make_configs()
 

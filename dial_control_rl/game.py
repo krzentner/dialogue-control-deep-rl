@@ -384,6 +384,10 @@ class Engine(engine.Engine):
     def goals(self):
         return self.the_plot[('goal', 1)], self.the_plot[('goal', 2)]
 
+    def observation_with_goal(self, obs, player):
+        grid, inv1, inv2, player1, player2, completed = obs
+        goal = self.the_plot[('goal', player)]
+        return (grid, inv2, inv1, player2, player1, completed, goal)
 
 def observations_for_player(obs, player):
     if player == 1:

@@ -1,5 +1,6 @@
 from lagom.runner import EpisodeRunner
 from lagom.engine import BaseEngine
+from lagom import Logger
 
 
 class Engine(BaseEngine):
@@ -16,7 +17,20 @@ class Engine(BaseEngine):
         return train_output
 
     def log_train(self, train_output, **kwargs):
-        pass
+        logger = Logger()
+        D = train_output['D']
+        out_agent = train_output['out_agent']
+        n = train_output['n']
+        logger('train_iteration', n+1)  # starts from 1
+        logger('params', self.agent.policy.state_dict())
+
+        logger('num_segments', D.N)
+        logger('num_timesteps', D.total_T)
+        logger('accumulated_trained_timesteps', self.agent.total_T)
+        print('-'*50)
+        logger.dump(keys=None, index=None, indent=0)
+        print('-'*50)
+        return logger.logs
 
     def eval(self, n):
         self.agent.eval()

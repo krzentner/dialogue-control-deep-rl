@@ -21,6 +21,7 @@ class CraftingEnv(Env):
         self._step_player()
 
         obs = game.observations_for_player(obs, self.current_player)
+        obs = self.game.observation_with_goal(obs, self.current_player)
         obs = self.actual_observation_space.flatten(obs)
         return (obs, reward, self.game.game_over, {
                 'goals': self.game.goals(),
@@ -44,6 +45,7 @@ class CraftingEnv(Env):
                 shape=(game.MAP_HEIGHT, game.MAP_WIDTH)),
             Box(0, 1, dtype=np.uint8,
                 shape=(game.MAP_HEIGHT, game.MAP_WIDTH)),
+            Box(0, 1, dtype=np.uint8, shape=(game.GOAL_LEN,)),
             Box(0, 1, dtype=np.uint8, shape=(game.GOAL_LEN,))))
 
     def render(self, mode='human'):
@@ -93,6 +95,7 @@ class CraftingEnv(Env):
         self.seed(self.last_seed)
         obs = self.game.render_observation()
         obs = game.observations_for_player(obs, self.current_player)
+        obs = self.game.observation_with_goal(obs, self.current_player)
         obs = self.actual_observation_space.flatten(obs)
         assert obs.shape == self.observation_space.shape
         return obs
