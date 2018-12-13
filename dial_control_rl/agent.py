@@ -38,7 +38,10 @@ class Policy(BasePolicy):
         self.V_head = StateValueHead(config, self.device, feature_dim)
 
     def make_optimizer(self, config, **kwargs):
-        self.optimizer = optim.Adam(self.parameters(), lr=config['algo.lr'])
+        try:
+            self.optimizer = optim.Adam(self.parameters(), lr=config['algo.lr'])
+        except KeyError:
+            self.optimizer = optim.Adam(self.parameters(), lr=1e-5)
 
     def optimizer_step(self, config, **kwargs):
         self.optimizer.step()

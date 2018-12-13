@@ -16,6 +16,7 @@ from lagom.runner import RollingSegmentRunner
 from lagom.utils import pickle_dump
 from functools import partial
 from pathlib import Path
+import torch
 
 from dial_control_rl.env import CraftingEnv
 from dial_control_rl.engine import Engine
@@ -48,8 +49,8 @@ class ExperimentWorker(BaseExperimentWorker):
                 if i % config['log.interval'] == 0:
                     logs = engine.log_train(training_result)
                     pickle_dump(obj=logs, f=logdir / f'iter_{i}_train_logs', ext='.pkl')
-                    np.save(logdir / 'trained_params',
-                            engine.agent.policy.state_dict())
+                    torch.save(engine.agent.policy.state_dict(),
+                               logdir / 'trained_params')
 
 
         return algorithm
@@ -78,7 +79,7 @@ class ExperimentMaster(BaseExperimentMaster):
 
         configurator.fixed('train.iter', 10000)
         configurator.fixed('log.interval', 10)
-        configurator.fixed('log.dir', 'logs-2')
+        configurator.fixed('log.dir', 'logs-3')
 
         return configurator.make_configs()
 
